@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.0
+ * Razorpay Payment Gateway for WHMCS v3.0.1
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -11,7 +11,7 @@ use WHMCS\Database\Capsule;
 
 class Gateway
 {
-    const VERSION = '3.0.0';
+    const VERSION = '3.0.1';
     const MODULE  = 'razorpay';
 
     const RESULT_APPLIED   = 'applied';
@@ -256,7 +256,13 @@ class Gateway
 
             if ($e->isTransient()) {
                 $existing = $client->findOrderByReceipt($data['receipt']);
-                if ($existing !== null) {
+                if ($existing !== null
+                    && isset($existing['receipt'], $existing['amount'], $existing['currency'])
+                    && $existing['receipt'] === $data['receipt']
+                    && (int) $existing['amount'] === (int) $data['amount']
+                    && strtoupper($existing['currency']) === $currency
+                    && self::notesMatch($existing, (object) array('merchant_order_id' => (string) $invoice->id))
+                ) {
                     return $existing;
                 }
             }
@@ -305,6 +311,10 @@ class Gateway
 
     public static function reconcileOrder(array $params, $row, $order = null)
     {
+        if (empty($row->key_id) || $row->key_id !== self::keyId($params)) {
+            return null;
+        }
+
         $client = self::client($params);
 
         try {
@@ -315,6 +325,16 @@ class Gateway
             if (!isset($order['status']) || ($order['status'] !== 'paid' && $order['status'] !== 'attempted')) {
                 OrderMapping::markChecked($row->razorpay_order_id);
                 return null;
+            }
+
+            if (!self::notesMatch($order, $row)) {
+                OrderMapping::markStatus($row->razorpay_order_id, OrderMapping::STATUS_REVIEW);
+                Logger::log('Reconcile order', array(
+                    'invoice_id' => $row->merchant_order_id,
+                    'order_id'   => $row->razorpay_order_id,
+                    'reason'     => 'Razorpay order notes reference a different invoice; not credited.',
+                ), 'Manual Review');
+                return self::RESULT_REJECTED;
             }
 
             $payments = $client->fetchOrderPayments($row->razorpay_order_id);
@@ -381,6 +401,18 @@ class Gateway
 
         if (!isset($payment['order_id']) || $payment['order_id'] !== $row->razorpay_order_id) {
             Logger::log('Apply payment', $context + array('reason' => 'Payment does not belong to this Razorpay order'), 'Rejected');
+            return self::RESULT_REJECTED;
+        }
+
+        if (!self::notesMatch($payment, $row)) {
+            OrderMapping::markStatus($row->razorpay_order_id, OrderMapping::STATUS_REVIEW, $paymentId);
+            Logger::log('Apply payment', $context + array('reason' => 'Payment notes reference a different invoice; not credited.'), 'Manual Review');
+            return self::RESULT_REJECTED;
+        }
+
+        if ($source === 'reconcile' && !self::isRecentFor($payment, $row)) {
+            OrderMapping::markStatus($row->razorpay_order_id, OrderMapping::STATUS_REVIEW, $paymentId);
+            Logger::log('Apply payment', $context + array('reason' => 'Older payment found during automatic recovery; not credited automatically. Review it in the Razorpay Dashboard.'), 'Manual Review');
             return self::RESULT_REJECTED;
         }
 
@@ -565,6 +597,28 @@ class Gateway
         }
 
         return $results;
+    }
+
+    public static function notesMatch(array $entity, $row)
+    {
+        $notes = isset($entity['notes']) && is_array($entity['notes']) ? $entity['notes'] : array();
+
+        if (!isset($notes['whmcs_order_id']) || $notes['whmcs_order_id'] === '' || $notes['whmcs_order_id'] === null) {
+            return true;
+        }
+
+        return (string) $notes['whmcs_order_id'] === (string) $row->merchant_order_id;
+    }
+
+    public static function isRecentFor(array $payment, $row)
+    {
+        if (empty($payment['created_at']) || $row->created_at === null) {
+            return false;
+        }
+
+        $created = (int) $payment['created_at'];
+
+        return $created >= strtotime($row->created_at) - 600 && $created >= time() - 8 * 86400;
     }
 
     public static function isMissing(ApiException $e)

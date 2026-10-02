@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.0
+ * Razorpay Payment Gateway for WHMCS v3.0.1
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -88,9 +88,9 @@ try {
         if (isset($_SESSION[$legacyKey]) && Validator::isOrderId($_SESSION[$legacyKey])) {
             $orderId = $_SESSION[$legacyKey];
         } else {
-            $open = OrderMapping::findOpenForInvoice($invoiceId, Gateway::keyId($params), 1);
-            if (count($open) > 0) {
-                $orderId = $open[0]->razorpay_order_id;
+            $latest = OrderMapping::latestForInvoice($invoiceId);
+            if ($latest) {
+                $orderId = $latest->razorpay_order_id;
             }
         }
     }

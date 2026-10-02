@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.0
+ * Razorpay Payment Gateway for WHMCS v3.0.1
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -173,15 +173,20 @@ class OrderMapping
     {
         return Capsule::table(self::TABLE)
             ->where('merchant_order_id', (string) $invoiceId)
-            ->where(function ($query) {
-                $query->where('status', self::STATUS_CREATED)->orWhereNull('status');
-            })
-            ->where(function ($query) use ($keyId) {
-                $query->where('key_id', (string) $keyId)->orWhereNull('key_id');
-            })
+            ->where('status', self::STATUS_CREATED)
+            ->where('key_id', (string) $keyId)
+            ->where('created_at', '>=', date('Y-m-d H:i:s', time() - 7 * 86400))
             ->orderBy('id', 'desc')
             ->limit((int) $limit)
             ->get();
+    }
+
+    public static function latestForInvoice($invoiceId)
+    {
+        return Capsule::table(self::TABLE)
+            ->where('merchant_order_id', (string) $invoiceId)
+            ->orderBy('id', 'desc')
+            ->first();
     }
 
     public static function forInvoice($invoiceId, $limit = 5)
@@ -255,9 +260,7 @@ class OrderMapping
             ->join('tblinvoices as i', 'i.id', '=', 'm.merchant_order_id')
             ->whereIn('i.status', array('Unpaid', 'Payment Pending'))
             ->where('m.status', self::STATUS_CREATED)
-            ->where(function ($query) use ($keyId) {
-                $query->where('m.key_id', (string) $keyId)->orWhereNull('m.key_id');
-            })
+            ->where('m.key_id', (string) $keyId)
             ->whereRaw($activity . ' >= ?', array(date('Y-m-d H:i:s', time() - (int) $windowSeconds)))
             ->whereRaw($activity . ' <= ?', array(date('Y-m-d H:i:s', time() - (int) $minIdleSeconds)))
             ->whereRaw(
