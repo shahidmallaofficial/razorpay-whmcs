@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.1
+ * Razorpay Payment Gateway for WHMCS v3.0.2
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -126,8 +126,14 @@ try {
         razorpay_webhook_respond(200, 'order not created by this WHMCS installation');
     }
 
-    if (Gateway::transactionExists($payment['id'])) {
-        OrderMapping::markPaid($orderId, $payment['id']);
+    $recordedOn = Gateway::recordedInvoiceFor($payment['id']);
+
+    if ($recordedOn !== null) {
+        if ($recordedOn === (int) $row->merchant_order_id) {
+            OrderMapping::markPaid($orderId, $payment['id']);
+        } else {
+            OrderMapping::markStatus($orderId, OrderMapping::STATUS_REVIEW, $payment['id']);
+        }
         razorpay_webhook_respond(200, Gateway::RESULT_DUPLICATE);
     }
 

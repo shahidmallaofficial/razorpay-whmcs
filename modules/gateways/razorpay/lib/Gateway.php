@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.1
+ * Razorpay Payment Gateway for WHMCS v3.0.2
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -11,7 +11,7 @@ use WHMCS\Database\Capsule;
 
 class Gateway
 {
-    const VERSION = '3.0.1';
+    const VERSION = '3.0.2';
     const MODULE  = 'razorpay';
 
     const RESULT_APPLIED   = 'applied';
@@ -416,6 +416,12 @@ class Gateway
             return self::RESULT_REJECTED;
         }
 
+        if (empty($row->key_id) && (empty($payment['created_at']) || (int) $payment['created_at'] < time() - 3 * 86400)) {
+            OrderMapping::markStatus($row->razorpay_order_id, OrderMapping::STATUS_REVIEW, $paymentId);
+            Logger::log('Apply payment', $context + array('reason' => 'Old payment on an order created before the upgrade; not credited automatically.'), 'Manual Review');
+            return self::RESULT_REJECTED;
+        }
+
         if (!empty($row->key_id) && $row->key_id !== self::keyId($params)) {
             Logger::log('Apply payment', $context + array('reason' => 'Order was created with a different API key (test/live switch)'), 'Rejected');
             return self::RESULT_REJECTED;
@@ -446,9 +452,20 @@ class Gateway
         }
 
         try {
-            if (self::transactionExists($paymentId)) {
-                OrderMapping::markPaid($row->razorpay_order_id, $paymentId);
-                return self::RESULT_DUPLICATE;
+            $recordedOn = self::recordedInvoiceFor($paymentId);
+
+            if ($recordedOn !== null) {
+                if ($recordedOn === $invoiceId) {
+                    OrderMapping::markPaid($row->razorpay_order_id, $paymentId);
+                    return self::RESULT_DUPLICATE;
+                }
+
+                OrderMapping::markStatus($row->razorpay_order_id, OrderMapping::STATUS_REVIEW, $paymentId);
+                Logger::log('Apply payment', $context + array(
+                    'recorded_on_invoice' => $recordedOn,
+                    'reason'              => 'This payment is already recorded on another invoice; not credited again.',
+                ), 'Manual Review');
+                return self::RESULT_CLOSED;
             }
 
             $invoice = self::invoice($invoiceId);
@@ -695,9 +712,20 @@ class Gateway
         return 'r' . (int) (isset($payment['amount_refunded']) ? $payment['amount_refunded'] : 0);
     }
 
+    public static function recordedInvoiceFor($paymentId)
+    {
+        $found = Capsule::table('tblaccounts')->where('transid', $paymentId)->select('invoiceid')->first();
+
+        if (!$found && Validator::isPaymentId($paymentId)) {
+            $found = Capsule::table('tblaccounts')->where('transid', 'like', '%' . $paymentId . '%')->select('invoiceid')->first();
+        }
+
+        return $found ? (int) $found->invoiceid : null;
+    }
+
     public static function transactionExists($transactionId)
     {
-        return Capsule::table('tblaccounts')->where('transid', $transactionId)->exists();
+        return self::recordedInvoiceFor($transactionId) !== null;
     }
 
     public static function lock($name, $timeout = 15)

@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.1
+ * Razorpay Payment Gateway for WHMCS v3.0.2
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */

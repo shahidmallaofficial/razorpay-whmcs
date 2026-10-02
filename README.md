@@ -1,12 +1,12 @@
 # Razorpay Payment Gateway for WHMCS
 
-**Version 3.0.1** · Upgraded, hardened and maintained by **[Shahid Malla](https://shahidmalla.com)**
+**Version 3.0.2** · Upgraded, hardened and maintained by **[Shahid Malla](https://shahidmalla.com)**
 
 Accept cards, UPI, netbanking, wallets and EMI in WHMCS with Razorpay Checkout. The checkout opens on your own site with no redirect. This release is a full rewrite of the official Razorpay WHMCS module (v2.2.2). It fixes payments that were charged but never marked paid, double-credited payments, and wrong amounts. It also makes the invoice page faster and closes several security gaps.
 
 > This is an independent, community-maintained upgrade. It is not an official Razorpay release.
 
-**3.0.1:** automatic payment recovery now only credits recent payments on orders created by this version, so payments from orders created before the upgrade are never auto-applied to an invoice. A payment whose Razorpay notes name a different invoice is flagged for review instead of being credited.
+**3.0.2 (important):** an invoice can never be auto-paid with another invoice's payment. Automatic recovery only credits recent payments on orders created by this version; orders created before the upgrade only accept fresh payments; a payment already recorded anywhere in WHMCS (in any transaction-ID format), or whose Razorpay notes name a different invoice, is flagged for manual review instead of being credited.
 
 ---
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Razorpay Payment Gateway for WHMCS v3.0.1
+ * Razorpay Payment Gateway for WHMCS v3.0.2
  * Developed by Shahid Malla - https://shahidmalla.com
  * MIT License
  */
@@ -140,7 +140,7 @@ try {
     $result = Gateway::applyPayment($params, $row, $payment, 'callback');
 } catch (\Throwable $e) {
     Logger::log('Callback', array('invoice_id' => $invoiceId, 'payment_id' => $paymentId, 'error' => $e->getMessage()), 'Error');
-    razorpay_callback_redirect(Gateway::transactionExists($paymentId) ? $okUrl : $viewUrl);
+    razorpay_callback_redirect(Gateway::recordedInvoiceFor($paymentId) === $invoiceId ? $okUrl : $viewUrl);
 }
 
 switch ($result) {
@@ -151,10 +151,13 @@ switch ($result) {
     case Gateway::RESULT_REJECTED:
         razorpay_callback_redirect($failedUrl);
         break;
+    case Gateway::RESULT_CLOSED:
+        razorpay_callback_redirect($viewUrl);
+        break;
     case Gateway::RESULT_PENDING:
     case Gateway::RESULT_RETRY:
-        razorpay_callback_redirect(Gateway::transactionExists($paymentId) ? $okUrl : $pendUrl);
+        razorpay_callback_redirect(Gateway::recordedInvoiceFor($paymentId) === $invoiceId ? $okUrl : $pendUrl);
         break;
     default:
-        razorpay_callback_redirect(Gateway::transactionExists($paymentId) ? $okUrl : $viewUrl);
+        razorpay_callback_redirect(Gateway::recordedInvoiceFor($paymentId) === $invoiceId ? $okUrl : $viewUrl);
 }
